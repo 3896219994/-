@@ -7,6 +7,7 @@ local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local HttpService = game:GetService("HttpService")
 local Workspace = game:GetService("Workspace")
+local CoreGui = game:GetService("CoreGui")
 
 -- 等待玩家加载
 local LocalPlayer = Players.LocalPlayer
@@ -19,7 +20,7 @@ local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "离瑜二UI_" .. HttpService:GenerateGUID(false)
 ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-ScreenGui.Parent = game:GetService("CoreGui")
+ScreenGui.Parent = CoreGui
 
 -- 功能状态变量
 local ENABLED = false
@@ -237,9 +238,109 @@ local function toggleNoclip(state)
     if state then enableNoclip() else disableNoclip() end
 end
 
--- 飞行功能
-local bodyV
+-- ===== 移动端飞行功能 =====
 local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+if not root and LocalPlayer.Character then
+    root = LocalPlayer.Character:WaitForChild("HumanoidRootPart", 5)
+end
+
+local bodyV
+local flySpeed = 30
+local isFlying = false
+
+-- 移动端控制变量
+local isMovingForward = false
+local isMovingBackward = false
+local isMovingUp = false
+local isMovingDown = false
+
+-- 创建移动端控制按钮
+local forwardBtn, backwardBtn, upBtn, downBtn
+
+-- 前进按钮
+forwardBtn = Instance.new("TextButton")
+forwardBtn.Size = UDim2.new(0, 40, 0, 40)
+forwardBtn.Position = UDim2.new(0.5, -20, 0.9, -120)
+forwardBtn.BackgroundColor3 = Color3.fromRGB(70, 70, 200)
+forwardBtn.BackgroundTransparency = 0.5
+forwardBtn.BorderSizePixel = 0
+forwardBtn.Text = "前进"
+forwardBtn.TextColor3 = Color3.new(1, 1, 1)
+forwardBtn.TextSize = 12
+forwardBtn.Visible = false
+forwardBtn.ZIndex = 20
+forwardBtn.Parent = ScreenGui
+
+-- 后退按钮
+backwardBtn = Instance.new("TextButton")
+backwardBtn.Size = UDim2.new(0, 40, 0, 40)
+backwardBtn.Position = UDim2.new(0.5, -20, 0.9, -70)
+backwardBtn.BackgroundColor3 = Color3.fromRGB(200, 70, 70)
+backwardBtn.BackgroundTransparency = 0.5
+backwardBtn.BorderSizePixel = 0
+backwardBtn.Text = "后退"
+backwardBtn.TextColor3 = Color3.new(1, 1, 1)
+backwardBtn.TextSize = 12
+backwardBtn.Visible = false
+backwardBtn.ZIndex = 20
+backwardBtn.Parent = ScreenGui
+
+-- 上升按钮
+upBtn = Instance.new("TextButton")
+upBtn.Size = UDim2.new(0, 40, 0, 40)
+upBtn.Position = UDim2.new(0.8, -20, 0.9, -120)
+upBtn.BackgroundColor3 = Color3.fromRGB(70, 200, 70)
+upBtn.BackgroundTransparency = 0.5
+upBtn.BorderSizePixel = 0
+upBtn.Text = "上升"
+upBtn.TextColor3 = Color3.new(1, 1, 1)
+upBtn.TextSize = 12
+upBtn.Visible = false
+upBtn.ZIndex = 20
+upBtn.Parent = ScreenGui
+
+-- 下降按钮
+downBtn = Instance.new("TextButton")
+downBtn.Size = UDim2.new(0, 40, 0, 40)
+downBtn.Position = UDim2.new(0.8, -20, 0.9, -70)
+downBtn.BackgroundColor3 = Color3.fromRGB(200, 200, 70)
+downBtn.BackgroundTransparency = 0.5
+downBtn.BorderSizePixel = 0
+downBtn.Text = "下降"
+downBtn.TextColor3 = Color3.new(1, 1, 1)
+downBtn.TextSize = 12
+downBtn.Visible = false
+downBtn.ZIndex = 20
+downBtn.Parent = ScreenGui
+
+-- 移动端按钮事件
+forwardBtn.MouseButton1Down:Connect(function()
+    isMovingForward = true
+end)
+forwardBtn.MouseButton1Up:Connect(function()
+    isMovingForward = false
+end)
+
+backwardBtn.MouseButton1Down:Connect(function()
+    isMovingBackward = true
+end)
+backwardBtn.MouseButton1Up:Connect(function()
+    isMovingBackward = false
+end)
+
+upBtn.MouseButton1Down:Connect(function()
+    isMovingUp = true
+end)
+upBtn.MouseButton1Up:Connect(function()
+    isMovingUp = false
+end)
+
+downBtn.MouseButton1Down:Connect(function()
+    isMovingDown = true
+end)
+downBtn.MouseButton1Up:Connect(function()
+    isMovingDown = false
+end)
 
 local function toggleFly(state)
     isFlying = state
@@ -256,29 +357,53 @@ local function toggleFly(state)
         bodyV.MaxForce = Vector3.new(1e6, 1e6, 1e6)
         bodyV.Velocity = Vector3.new()
         bodyV.Parent = root
+        
+        -- 显示移动端控制按钮
+        forwardBtn.Visible = true
+        backwardBtn.Visible = true
+        upBtn.Visible = true
+        downBtn.Visible = true
     else
         if bodyV then
             bodyV:Destroy()
             bodyV = nil
         end
+        
+        -- 隐藏移动端控制按钮
+        forwardBtn.Visible = false
+        backwardBtn.Visible = false
+        upBtn.Visible = false
+        downBtn.Visible = false
+        
+        -- 重置移动状态
+        isMovingForward = false
+        isMovingBackward = false
+        isMovingUp = false
+        isMovingDown = false
     end
 end
 
--- 飞行控制
+-- 飞行控制函数（只使用移动端控制）
 RunService.RenderStepped:Connect(function()
     if not bodyV or not root or not root.Parent then return end
     
     local move = Vector3.new()
     
-    if UserInputService.KeyboardEnabled then
-        if UserInputService:IsKeyDown(Enum.KeyCode.W) then move = move + CAM.CFrame.LookVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.S) then move = move - CAM.CFrame.LookVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.A) then move = move - CAM.CFrame.RightVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.D) then move = move + CAM.CFrame.RightVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then move = move + Vector3.new(0, 1, 0) end
-        if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then move = move - Vector3.new(0, 1, 0) end
+    -- 移动端按钮控制
+    if isMovingForward then
+        move = move + CAM.CFrame.LookVector
+    end
+    if isMovingBackward then
+        move = move - CAM.CFrame.LookVector
+    end
+    if isMovingUp then
+        move = move + Vector3.new(0, 1, 0)
+    end
+    if isMovingDown then
+        move = move - Vector3.new(0, 1, 0)
     end
     
+    -- 应用移动
     if move.Magnitude > 0 then
         bodyV.Velocity = move.Unit * flySpeed
     else
@@ -650,7 +775,7 @@ local function CreateFunctionButton(text, parent, toggleCallback)
     return buttonFrame, toggleButton
 end
 
--- 创建下拉框函数（加长版本）
+-- 创建下拉框函数
 local function CreateDropdown(text, parent, selectionCallback)
     local dropdownFrame = Instance.new("Frame")
     dropdownFrame.Size = UDim2.new(1, 0, 0, 35)
@@ -673,9 +798,9 @@ local function CreateDropdown(text, parent, selectionCallback)
     dropdownCorner.CornerRadius = UDim.new(0, 6)
     dropdownCorner.Parent = dropdownButton
 
-    -- 玩家列表 - 加长到至少显示6个玩家
+    -- 玩家列表
     local playerListFrame = Instance.new("Frame")
-    playerListFrame.Size = UDim2.new(1, 0, 0, 180) -- 增加到180高度，确保显示6个玩家
+    playerListFrame.Size = UDim2.new(1, 0, 0, 180)
     playerListFrame.Position = UDim2.new(0, 0, 1, 5)
     playerListFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
     playerListFrame.BackgroundTransparency = 0.1
@@ -758,7 +883,7 @@ CreateSidebarButton("传送功能", "Teleport")
 CreateSidebarButton("脚本信息", "Info")
 
 -- === 通用页面功能 ===
--- 追踪白名单下拉框（移到最上面）
+-- 追踪白名单下拉框
 local trackingWhitelistDropdown = CreateDropdown("追踪白名单", Pages.General, function(player, state, getOnly)
     if getOnly then return attackWhitelist end
     if player then
@@ -840,8 +965,10 @@ end)
 local teleportAllButton, teleportAllToggle = CreateFunctionButton("循环传送所有人", Pages.Teleport, function(enabled)
     if enabled then
         teleportToAllPlayersLoop()
+        teleportAllToggle.Text = "开"
     else
         teleportingAll = false
+        teleportAllToggle.Text = "关"
     end
 end)
 
@@ -849,11 +976,13 @@ local teleportSelectedButton, teleportSelectedToggle = CreateFunctionButton("循
     if enabled then
         if next(selectedPlayers) then
             teleportToSelectedPlayerLoop()
+            teleportSelectedToggle.Text = "开"
         else
             teleportSelectedToggle.Text = "关"
         end
     else
         teleportingSelected = false
+        teleportSelectedToggle.Text = "关"
     end
 end)
 
@@ -1032,6 +1161,11 @@ CloseButton.MouseButton1Click:Connect(function()
             
             for _, d in ipairs(dots) do d:Destroy() end
             ScreenGui:Destroy()
+            
+            -- 恢复元表
+            setreadonly(meta, false)
+            meta.__namecall = old
+            setreadonly(meta, true)
         end
     end)
 end)
@@ -1051,1224 +1185,13 @@ LocalPlayer.CharacterAdded:Connect(function(newChar)
     end
     isFlying = false
     if flyToggle then flyToggle.Text = "关" end
-end)
-
-print("QQ音乐风格侧边栏UI加载完成！")-- 标题栏（用于拖动）
-local titleBar = Instance.new("Frame")
-titleBar.Size = UDim2.new(1, 0, 0, 25)
-titleBar.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-titleBar.BackgroundTransparency = 0.2
-titleBar.BorderSizePixel = 0
-titleBar.Parent = fr
-
--- 最小化按钮
-local minimizeBtn = Instance.new("TextButton")
-minimizeBtn.Size = UDim2.new(0, 25, 0, 25)
-minimizeBtn.Position = UDim2.new(1, -25, 0, 0)
-minimizeBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-minimizeBtn.Text = "_"
-minimizeBtn.TextSize = 14
-minimizeBtn.Parent = titleBar
-
--- 下一页按钮
-local nextPageBtn = Instance.new("TextButton")
-nextPageBtn.Size = UDim2.new(0, 25, 0, 25)
-nextPageBtn.Position = UDim2.new(1, -50, 0, 0)
-nextPageBtn.BackgroundColor3 = Color3.fromRGB(70, 70, 200)
-nextPageBtn.Text = ">"
-nextPageBtn.TextSize = 14
-nextPageBtn.Parent = titleBar
-
--- 作者
-local lb = Instance.new("TextLabel")
-lb.Size = UDim2.new(1, -50, 1, 0)
-lb.Position = UDim2.new(0, 5, 0, 0)
-lb.BackgroundTransparency = 1
-lb.Text = "作者：离瑜二"
-lb.TextColor3 = Color3.new(1, 1, 0)
-lb.TextSize = 14
-lb.TextXAlignment = Enum.TextXAlignment.Left
-lb.Parent = titleBar
-
--- 内容区域
-local contentFrame = Instance.new("Frame")
-contentFrame.Size = UDim2.new(1, 0, 1, -25)
-contentFrame.Position = UDim2.new(0, 0, 0, 25)
-contentFrame.BackgroundTransparency = 1
-contentFrame.ClipsDescendants = true
-contentFrame.Parent = fr
-
--- 主页滚动框架
-local mainScrollFrame = Instance.new("ScrollingFrame")
-mainScrollFrame.Size = UDim2.new(1, 0, 1, 0)
-mainScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-mainScrollFrame.ScrollBarThickness = 5
-mainScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 100)
-mainScrollFrame.BackgroundTransparency = 1
-mainScrollFrame.Visible = true
-mainScrollFrame.Parent = contentFrame
-
--- 第二页滚动框架（传送和甩飞功能）
-local secondScrollFrame = Instance.new("ScrollingFrame")
-secondScrollFrame.Size = UDim2.new(1, 0, 1, 0)
-secondScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-secondScrollFrame.ScrollBarThickness = 5
-secondScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 100)
-secondScrollFrame.BackgroundTransparency = 1
-secondScrollFrame.Visible = false
-secondScrollFrame.Parent = contentFrame
-
--- UI列表布局
-local mainListLayout = Instance.new("UIListLayout")
-mainListLayout.Padding = UDim.new(0, 5)
-mainListLayout.Parent = mainScrollFrame
-
-local secondListLayout = Instance.new("UIListLayout")
-secondListLayout.Padding = UDim.new(0, 5)
-secondListLayout.Parent = secondScrollFrame
-
--- 更新滚动框架大小
-mainListLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-    mainScrollFrame.CanvasSize = UDim2.new(0, 0, 0, mainListLayout.AbsoluteContentSize.Y + 10)
-end)
-
-secondListLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-    secondScrollFrame.CanvasSize = UDim2.new(0, 0, 0, secondListLayout.AbsoluteContentSize.Y + 10)
-end)
-
--- 创建按钮函数
-local function createButton(text, name, parent)
-    local btn = Instance.new("TextButton")
-    btn.Name = name
-    btn.Size = UDim2.new(1, -10, 0, 25)
-    btn.Position = UDim2.new(0, 5, 0, 0)
-    btn.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
-    btn.BackgroundTransparency = 0.3
-    btn.BorderSizePixel = 0
-    btn.Text = text
-    btn.TextColor3 = Color3.new(1, 1, 1)
-    btn.TextSize = 12
-    btn.Parent = parent
-    return btn
-end
-
--- 主页按钮
-local trackBtn = createButton("追踪: 关", "TrackButton", mainScrollFrame)
-trackBtn.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
-
-local colorBtn = createButton("彩色: 关", "ColorButton", mainScrollFrame)
-colorBtn.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
-
-local espBtn = createButton("透视: 关", "ESPButton", mainScrollFrame)
-espBtn.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
-
-local flyBtn = createButton("飞行: 关", "FlyButton", mainScrollFrame)
-flyBtn.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
-
-local noclipBtn = createButton("穿墙: 关", "NoclipButton", mainScrollFrame)
-noclipBtn.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
-
-local speedBtn = createButton("速度 30", "SpeedButton", mainScrollFrame)
-
--- 副官信息
-local deputyLabel = Instance.new("TextLabel")
-deputyLabel.Size = UDim2.new(1, -10, 0, 25)
-deputyLabel.Position = UDim2.new(0, 5, 0, 0)
-deputyLabel.BackgroundTransparency = 1
-deputyLabel.Text = "副官：嫩小雨"
-deputyLabel.TextColor3 = Color3.fromRGB(255, 105, 180)
-deputyLabel.TextSize = 12
-deputyLabel.Parent = mainScrollFrame
-
--- 移动端控制提示
-local mobileHint = Instance.new("TextLabel")
-mobileHint.Size = UDim2.new(1, -10, 0, 25)
-mobileHint.Position = UDim2.new(0, 5, 0, 0)
-mobileHint.BackgroundTransparency = 1
-mobileHint.Text = "移动端: 使用控制按钮飞行"
-mobileHint.TextColor3 = Color3.new(0.8, 0.8, 0.8)
-mobileHint.TextSize = 10
-mobileHint.Visible = (UIS.TouchEnabled and not UIS.KeyboardEnabled)
-mobileHint.Parent = mainScrollFrame
-
--- 第二页内容
-local secondPageTitle = Instance.new("TextLabel")
-secondPageTitle.Size = UDim2.new(1, -10, 0, 25)
-secondPageTitle.Position = UDim2.new(0, 5, 0, 0)
-secondPageTitle.BackgroundTransparency = 1
-secondPageTitle.Text = "传送和甩飞功能"
-secondPageTitle.TextColor3 = Color3.new(1, 1, 1)
-secondPageTitle.TextSize = 14
-secondPageTitle.Parent = secondScrollFrame
-
--- 第二页功能按钮（放在上面）
-local teleportAllBtn = createButton("循环传送所有人", "TeleportAllButton", secondScrollFrame)
-teleportAllBtn.BackgroundColor3 = Color3.fromRGB(70, 70, 200)
-
-local teleportSelectedBtn = createButton("循环传送选定玩家", "TeleportSelectedButton", secondScrollFrame)
-teleportSelectedBtn.BackgroundColor3 = Color3.fromRGB(70, 70, 200)
-
-local spinAttackBtn = createButton("循环甩飞选定玩家", "SpinAttackButton", secondScrollFrame)
-spinAttackBtn.BackgroundColor3 = Color3.fromRGB(200, 70, 70)
-
--- 坐标记录功能按钮
-local savePosBtn = createButton("记录当前位置", "SavePositionButton", secondScrollFrame)
-savePosBtn.BackgroundColor3 = Color3.fromRGB(70, 170, 70)
-
-local returnPosBtn = createButton("返回记录位置", "ReturnPositionButton", secondScrollFrame)
-returnPosBtn.BackgroundColor3 = Color3.fromRGB(170, 70, 170)
-
--- 玩家选择下拉框容器（移动到最下面）
-local dropdownContainer = Instance.new("Frame")
-dropdownContainer.Size = UDim2.new(1, -10, 0, 25)
-dropdownContainer.Position = UDim2.new(0, 5, 0, 0)
-dropdownContainer.BackgroundTransparency = 1
-dropdownContainer.Parent = secondScrollFrame
-
--- 玩家选择下拉框
-local playerDropdown = Instance.new("Frame")
-playerDropdown.Size = UDim2.new(1, 0, 1, 0)
-playerDropdown.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-playerDropdown.BackgroundTransparency = 0.5
-playerDropdown.BorderSizePixel = 0
-playerDropdown.Parent = dropdownContainer
-
-local playerDropdownText = Instance.new("TextLabel")
-playerDropdownText.Size = UDim2.new(0.7, 0, 1, 0)
-playerDropdownText.Position = UDim2.new(0, 5, 0, 0)
-playerDropdownText.BackgroundTransparency = 1
-playerDropdownText.Text = "选择玩家"
-playerDropdownText.TextColor3 = Color3.new(1, 1, 1)
-playerDropdownText.TextSize = 12
-playerDropdownText.TextXAlignment = Enum.TextXAlignment.Left
-playerDropdownText.Parent = playerDropdown
-
-local playerDropdownBtn = Instance.new("TextButton")
-playerDropdownBtn.Size = UDim2.new(0.25, 0, 0.8, 0)
-playerDropdownBtn.Position = UDim2.new(0.75, 0, 0.1, 0)
-playerDropdownBtn.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
-playerDropdownBtn.Text = "▼"
-playerDropdownBtn.TextSize = 12
-playerDropdownBtn.Parent = playerDropdown
-
--- 玩家列表（下拉时显示） - 改进的选人界面
-local playerListFrame = Instance.new("Frame")
-playerListFrame.Size = UDim2.new(1, 0, 0, 120)
-playerListFrame.Position = UDim2.new(0, 0, 1, 2)
-playerListFrame.BackgroundColor3 = Color3.new(0, 0, 0) -- 全黑背景
-playerListFrame.BackgroundTransparency = 0.1
-playerListFrame.BorderSizePixel = 1
-playerListFrame.BorderColor3 = Color3.fromRGB(80, 80, 80)
-playerListFrame.Visible = false
-playerListFrame.ZIndex = 20 -- 确保显示在功能之上
-playerListFrame.Parent = dropdownContainer
-
-local playerListScroll = Instance.new("ScrollingFrame")
-playerListScroll.Size = UDim2.new(1, -5, 1, -5)
-playerListScroll.Position = UDim2.new(0, 5, 0, 5)
-playerListScroll.BackgroundTransparency = 1
-playerListScroll.ScrollBarThickness = 5
-playerListScroll.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 100)
-playerListScroll.Parent = playerListFrame
-
-local playerListLayout = Instance.new("UIListLayout")
-playerListLayout.Padding = UDim.new(0, 2)
-playerListLayout.Parent = playerListScroll
-
--- 关闭脚本
-local closeBtn = createButton("关闭脚本", "CloseButton", secondScrollFrame)
-closeBtn.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
-
--- 移动端控制按钮（只在移动设备上显示）
-local forwardBtn, backwardBtn, upBtn, downBtn
-if UIS.TouchEnabled then
-    -- 前进按钮
-    forwardBtn = Instance.new("TextButton")
-    forwardBtn.Size = UDim2.new(0, 40, 0, 40)
-    forwardBtn.Position = UDim2.new(0.5, -20, 0.9, -120)
-    forwardBtn.BackgroundColor3 = Color3.fromRGB(70, 70, 200)
-    forwardBtn.BackgroundTransparency = 0.5
-    forwardBtn.Text = "前进"
-    forwardBtn.TextSize = 12
-    forwardBtn.Visible = false
-    forwardBtn.Parent = sg
     
-    -- 后退按钮
-    backwardBtn = Instance.new("TextButton")
-    backwardBtn.Size = UDim2.new(0, 40, 0, 40)
-    backwardBtn.Position = UDim2.new(0.5, -20, 0.9, -70)
-    backwardBtn.BackgroundColor3 = Color3.fromRGB(200, 70, 70)
-    backwardBtn.BackgroundTransparency = 0.5
-    backwardBtn.Text = "后退"
-    backwardBtn.TextSize = 12
-    backwardBtn.Visible = false
-    backwardBtn.Parent = sg
-    
-    -- 上升按钮
-    upBtn = Instance.new("TextButton")
-    upBtn.Size = UDim2.new(0, 40, 0, 40)
-    upBtn.Position = UDim2.new(0.8, -20, 0.9, -120)
-    upBtn.BackgroundColor3 = Color3.fromRGB(70, 200, 70)
-    upBtn.BackgroundTransparency = 0.5
-    upBtn.Text = "上升"
-    upBtn.TextSize = 12
-    upBtn.Visible = false
-    upBtn.Parent = sg
-    
-    -- 下降按钮
-    downBtn = Instance.new("TextButton")
-    downBtn.Size = UDim2.new(0, 40, 0, 40)
-    downBtn.Position = UDim2.new(0.8, -20, 0.9, -70)
-    downBtn.BackgroundColor3 = Color3.fromRGB(200, 200, 70)
-    downBtn.BackgroundTransparency = 0.5
-    downBtn.Text = "下降"
-    downBtn.TextSize = 12
-    downBtn.Visible = false
-    downBtn.Parent = sg
-end
-
--- === 空心圆（360 线） ===
-local RADIUS   = 60
-local SEGMENTS = 360
-local dots = {}
-for i = 1, SEGMENTS do
-    local d = Instance.new("Frame")
-    d.Size = UDim2.new(0, 1, 0, 1)
-    d.BorderSizePixel = 0
-    d.Visible = false
-    d.Parent = sg
-    dots[i] = d
-end
-
--- 7 色表
-local COLORS = {
-    Color3.fromRGB(255, 0, 0),
-    Color3.fromRGB(255, 127, 0),
-    Color3.fromRGB(255, 255, 0),
-    Color3.fromRGB(0, 255, 0),
-    Color3.fromRGB(0, 255, 255),
-    Color3.fromRGB(0, 0, 255),
-    Color3.fromRGB(127, 0, 255)
-}
-
-local ENABLED  = false
-local COLORFUL = false
-local ESP_ENABLED = false
-local NOCLIP_ENABLED = false
-local colorIdx = 1
-local isMinimized = false
-local currentPage = "main" -- "main" 或 "second"
-
--- 透视功能变量
-local espObjects = {}
-local espConnections = {}
-
--- 穿墙功能变量
-local noclipConnections = {}
-local originalCollisions = {}
-
--- 传送功能变量
-local selectedPlayer = nil
-local teleportingAll = false
-local teleportingSelected = false
-
--- 甩飞功能变量
-local spinningPlayer = false
-local spinAttackConnection = nil
-local SPIN_SPEED = 600 -- 速度改为600
-local currentDirection = 1 -- 当前甩飞方向（1:上, 2:右, 3:下, 4:左）
-local lastDirectionChange = 0 -- 上次方向改变时间
-
--- 坐标记录变量
-local savedPosition = nil
-
--- 0.5 秒换色
-task.spawn(function()
-    while true do
-        if ENABLED then
-            local col = COLORFUL and COLORS[colorIdx] or Color3.new(1, 1, 1)
-            for _, d in ipairs(dots) do d.BackgroundColor3 = col end
-            colorIdx = colorIdx % #COLORS + 1
-        end
-        task.wait(0.5)
-    end
-end)
-
-local function updateCircle()
-    local c = CAM.ViewportSize / 2
-    for i = 1, SEGMENTS do
-        local a = (i - 1) / SEGMENTS * 2 * math.pi
-        dots[i].Position = UDim2.new(0, c.X + math.cos(a) * RADIUS, 0, c.Y + math.sin(a) * RADIUS)
-    end
-end
-
-updateCircle()
-CAM:GetPropertyChangedSignal("ViewportSize"):Connect(updateCircle)
-RS.RenderStepped:Connect(updateCircle)
-
--- === 射线拦截兼容写法 ===
-local meta = getrawmetatable(game)
-local old  = meta.__namecall
-setreadonly(meta, false)
-meta.__namecall = newcclosure(function(self, ...)
-    local method = getnamecallmethod()
-    local args = {...}
-    if (method == "Raycast" or method == "FindPartOnRay") and not checkcaller() and self == WS then
-        if not ENABLED then return old(self, ...) end
-        local origin, direction
-        if method == "Raycast" then
-            origin, direction = args[1], args[2]
-        else
-            local ray = args[1]
-            if typeof(ray) == "Ray" then
-                origin, direction = ray.Origin, ray.Direction
-            end
-        end
-        if origin and direction then
-            local closestHead
-            local closestDistance = math.huge
-            local cameraPos = CAM.CFrame.Position
-            local lookVec   = CAM.CFrame.LookVector
-            for _, plr in ipairs(PS:GetPlayers()) do
-                if plr ~= LP and plr.Character then
-                    local char = plr.Character
-                    local head = char:FindFirstChild("Head")
-                    local hum  = char:FindFirstChildOfClass("Humanoid")
-                    if head and hum and hum.Health > 0 and not char:FindFirstChild("ForceField") then
-                        local dir = (head.Position - cameraPos).Unit
-                        local angle = math.deg(math.acos(lookVec:Dot(dir)))
-                        if angle <= RADIUS then
-                            local dist = (head.Position - cameraPos).Magnitude
-                            if dist < closestDistance then
-                                closestHead = head
-                                closestDistance = dist
-                            end
-                        end
-                    end
-                end
-            end
-            if closestHead then
-                return {
-                    Instance = closestHead,
-                    Position = closestHead.Position,
-                    Normal   = (closestHead.Position - origin).Unit,
-                    Material = Enum.Material.Plastic
-                }
-            end
-        end
-    end
-    return old(self, ...)
-end)
-setreadonly(meta, true)
-
--- === 透视功能 ===
-local function createESP(character)
-    if not character or not character:IsA("Model") or espObjects[character] then return end
-    
-    local highlight = Instance.new("Highlight")
-    highlight.Name = "ESP_Highlight"
-    highlight.Adornee = character
-    highlight.FillColor = Color3.fromRGB(255, 0, 0)
-    highlight.FillTransparency = 0.5
-    highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
-    highlight.OutlineTransparency = 0
-    highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-    highlight.Parent = character
-    
-    espObjects[character] = highlight
-    
-    -- 监听角色删除
-    local connection
-    connection = character.AncestryChanged:Connect(function(_, parent)
-        if not parent then
-            if highlight then
-                highlight:Destroy()
-            end
-            if connection then
-                connection:Disconnect()
-            end
-            espObjects[character] = nil
-        end
-    end)
-    
-    table.insert(espConnections, connection)
-end
-
-local function removeESP(character)
-    if espObjects[character] then
-        espObjects[character]:Destroy()
-        espObjects[character] = nil
-    end
-end
-
-local function toggleESP(state)
-    ESP_ENABLED = state
-    espBtn.Text = "透视: " .. (ESP_ENABLED and "开" or "关")
-    espBtn.BackgroundColor3 = ESP_ENABLED and Color3.fromRGB(50, 180, 50) or Color3.fromRGB(220, 50, 50)
-    
-    if ESP_ENABLED then
-        -- 为所有现有玩家添加ESP
-        for _, player in ipairs(PS:GetPlayers()) do
-            if player ~= LP and player.Character then
-                createESP(player.Character)
-            end
-        end
-        
-        -- 监听新玩家加入
-        if not espConnections.playerAdded then
-            espConnections.playerAdded = PS.PlayerAdded:Connect(function(player)
-                player.CharacterAdded:Connect(function(character)
-                    if ESP_ENABLED then
-                        createESP(character)
-                    end
-                end)
-            end)
-        end
-        
-        -- 监听现有玩家的角色变化
-        for _, player in ipairs(PS:GetPlayers()) do
-            if player ~= LP then
-                if not espConnections[player] then
-                    espConnections[player] = player.CharacterAdded:Connect(function(character)
-                        if ESP_ENABLED then
-                            createESP(character)
-                        end
-                    end)
-                end
-            end
-        end
-    else
-        -- 移除所有ESP
-        for character, highlight in pairs(espObjects) do
-            if highlight then
-                highlight:Destroy()
-            end
-        end
-        espObjects = {}
-        
-        -- 断开所有连接
-        for _, connection in pairs(espConnections) do
-            if connection then
-                connection:Disconnect()
-            end
-        end
-        espConnections = {}
-    end
-end
-
--- === 穿墙功能 ===
-local function enableNoclip()
-    if not LP.Character then return end
-    
-    -- 存储原始碰撞状态并禁用碰撞
-    for _, part in ipairs(LP.Character:GetDescendants()) do
-        if part:IsA("BasePart") then
-            originalCollisions[part] = part.CanCollide
-            part.CanCollide = false
-        end
-    end
-    
-    -- 监听新添加的部件
-    if not noclipConnections.characterDescendantAdded then
-        noclipConnections.characterDescendantAdded = LP.Character.DescendantAdded:Connect(function(descendant)
-            if descendant:IsA("BasePart") then
-                originalCollisions[descendant] = descendant.CanCollide
-                descendant.CanCollide = false
-            end
-        end)
-    end
-    
-    NOCLIP_ENABLED = true
-    noclipBtn.Text = "穿墙: 开"
-    noclipBtn.BackgroundColor3 = Color3.fromRGB(50, 180, 50)
-end
-
-local function disableNoclip()
-    -- 恢复原始碰撞状态
-    for part, canCollide in pairs(originalCollisions) do
-        if part and part.Parent then
-            part.CanCollide = canCollide
-        end
-    end
-    originalCollisions = {}
-    
-    -- 断开连接
-    if noclipConnections.characterDescendantAdded then
-        noclipConnections.characterDescendantAdded:Disconnect()
-        noclipConnections.characterDescendantAdded = nil
-    end
-    
-    NOCLIP_ENABLED = false
-    noclipBtn.Text = "穿墙: 关"
-    noclipBtn.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
-end
-
-local function toggleNoclip(state)
-    if state then
-        enableNoclip()
-    else
-        disableNoclip()
-    end
-end
-
--- === 传送功能 ===
-local function teleportToPlayer(player)
-    if not player or not player.Character then return false end
-    
-    local humanoidRootPart = player.Character:FindFirstChild("HumanoidRootPart")
-    local head = player.Character:FindFirstChild("Head")
-    
-    if not humanoidRootPart or not head then return false end
-    
-    local localChar = LP.Character
-    if not localChar then return false end
-    
-    local localHumanoidRootPart = localChar:FindFirstChild("HumanoidRootPart")
-    if not localHumanoidRootPart then return false end
-    
-    -- 传送到玩家头顶
-    localHumanoidRootPart.CFrame = CFrame.new(head.Position + Vector3.new(0, 5, 0))
-    return true
-end
-
-local function teleportToAllPlayersLoop()
-    if teleportingAll then return end
-    
-    teleportingAll = true
-    teleportAllBtn.Text = "停止循环传送"
-    teleportAllBtn.BackgroundColor3 = Color3.fromRGB(200, 70, 70)
-    
-    task.spawn(function()
-        while teleportingAll do
-            local players = {}
-            for _, player in ipairs(PS:GetPlayers()) do
-                if player ~= LP and player.Character then
-                    table.insert(players, player)
-                end
-            end
-            
-            for index, player in ipairs(players) do
-                if not teleportingAll then break end
-                
-                if player and player.Character then
-                    if teleportToPlayer(player) then
-                        teleportAllBtn.Text = "传送中: " .. player.Name
-                        -- 等待1秒再传送到下一个
-                        for i = 1, 10 do
-                            if not teleportingAll then break end
-                            task.wait(0.1)
-                        end
-                    end
-                end
-            end
-            
-            -- 短暂暂停后再开始新一轮循环
-            if teleportingAll then
-                for i = 1, 5 do
-                    if not teleportingAll then break end
-                    task.wait(0.1)
-                end
-            end
-        end
-        
-        teleportAllBtn.Text = "循环传送所有人"
-        teleportAllBtn.BackgroundColor3 = Color3.fromRGB(70, 70, 200)
-    end)
-end
-
-local function teleportToSelectedPlayerLoop()
-    if not selectedPlayer then return end
-    if teleportingSelected then return end
-    
-    teleportingSelected = true
-    teleportSelectedBtn.Text = "停止循环传送"
-    teleportSelectedBtn.BackgroundColor3 = Color3.fromRGB(200, 70, 70)
-    
-    task.spawn(function()
-        while teleportingSelected do
-            if selectedPlayer and selectedPlayer.Character then
-                if teleportToPlayer(selectedPlayer) then
-                    teleportSelectedBtn.Text = "传送中: " .. selectedPlayer.Name
-                    -- 等待1秒再传送
-                    for i = 1, 10 do
-                        if not teleportingSelected then break end
-                        task.wait(0.1)
-                    end
-                end
-            else
-                -- 如果选定的玩家不存在，停止循环
-                teleportingSelected = false
-                break
-            end
-        end
-        
-        teleportSelectedBtn.Text = "循环传送选定玩家"
-        teleportSelectedBtn.BackgroundColor3 = Color3.fromRGB(70, 70, 200)
-    end)
-end
-
-local function stopTeleportingAll()
-    teleportingAll = false
-end
-
-local function stopTeleportingSelected()
-    teleportingSelected = false
-end
-
--- === 循环四方向甩飞功能 ===
-local function isPlayerFlying(player)
-    if not player or not player.Character then return false end
-    local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
-    if not humanoid then return false end
-    return humanoid:GetState() == Enum.HumanoidStateType.Freefall
-end
-
-local function getDirectionVector(direction)
-    -- 返回四个方向的向量
-    if direction == 1 then return Vector3.new(0, 1, 0) end    -- 上
-    if direction == 2 then return Vector3.new(1, 0, 0) end    -- 右
-    if direction == 3 then return Vector3.new(0, -1, 0) end   -- 下
-    if direction == 4 then return Vector3.new(-1, 0, 0) end   -- 左
-    return Vector3.new(0, 1, 0) -- 默认向上
-end
-
-local function getDirectionName(direction)
-    -- 返回方向名称
-    if direction == 1 then return "上" end
-    if direction == 2 then return "右" end
-    if direction == 3 then return "下" end
-    if direction == 4 then return "左" end
-    return "上"
-end
-
-local function spinAttackPlayer()
-    if not selectedPlayer or spinningPlayer then return end
-    if not LP.Character then return end
-    
-    local localRoot = LP.Character:FindFirstChild("HumanoidRootPart")
-    if not localRoot then return end
-    
-    spinningPlayer = true
-    spinAttackBtn.Text = "停止甩飞"
-    spinAttackBtn.BackgroundColor3 = Color3.fromRGB(200, 70, 70)
-    
-    local spinAngle = 0
-    local rotationSpeed = SPIN_SPEED / 60
-    currentDirection = 1 -- 重置方向
-    lastDirectionChange = 0
-    
-    -- 停止现有的甩飞连接
-    if spinAttackConnection then
-        spinAttackConnection:Disconnect()
-        spinAttackConnection = nil
-    end
-    
-    spinAttackConnection = RS.RenderStepped:Connect(function(deltaTime)
-        if not spinningPlayer or not selectedPlayer or not selectedPlayer.Character then
-            if spinAttackConnection then
-                spinAttackConnection:Disconnect()
-                spinAttackConnection = nil
-            end
-            return
-        end
-        
-        local targetRoot = selectedPlayer.Character:FindFirstChild("HumanoidRootPart")
-        local targetHead = selectedPlayer.Character:FindFirstChild("Head")
-        
-        if not targetRoot or not targetHead then return end
-        
-        -- 检查目标是否已经被甩飞
-        if isPlayerFlying(selectedPlayer) then
-            spinAttackBtn.Text = "目标已甩飞"
-            task.wait(1)
-            spinningPlayer = false
-            spinAttackBtn.Text = "循环甩飞选定玩家"
-            spinAttackBtn.BackgroundColor3 = Color3.fromRGB(200, 70, 70)
-            if spinAttackConnection then
-                spinAttackConnection:Disconnect()
-                spinAttackConnection = nil
-            end
-            return
-        end
-        
-        -- 持续追踪目标玩家
-        local targetPosition = targetHead.Position
-        local currentPosition = localRoot.Position
-        local direction = (targetPosition - currentPosition).Unit
-        local distance = (targetPosition - currentPosition).Magnitude
-        
-        -- 保持1个单位距离
-        local desiredDistance = 1
-        if distance > desiredDistance + 0.5 then
-            -- 接近目标
-            localRoot.CFrame = CFrame.new(currentPosition + direction * math.min(SPIN_SPEED/30 * deltaTime, distance - desiredDistance))
-        elseif distance < desiredDistance - 0.5 then
-            -- 后退一点
-            localRoot.CFrame = CFrame.new(currentPosition - direction * math.min(SPIN_SPEED/30 * deltaTime, desiredDistance - distance))
-        end
-        
-        -- 高速横向360º旋转
-        spinAngle = spinAngle + math.rad(rotationSpeed)
-        if spinAngle > math.pi * 2 then
-            spinAngle = spinAngle - math.pi * 2
-        end
-        
-        -- 设置横向旋转
-        local horizontalRotation = CFrame.Angles(math.pi/2, spinAngle, 0)
-        localRoot.CFrame = CFrame.new(localRoot.Position) * horizontalRotation
-        
-        -- 每1秒切换一次甩飞方向
-        lastDirectionChange = lastDirectionChange + deltaTime
-        if lastDirectionChange >= 1 then
-            currentDirection = currentDirection % 4 + 1
-            lastDirectionChange = 0
-            spinAttackBtn.Text = "甩飞方向: " .. getDirectionName(currentDirection)
-        end
-        
-        -- 对目标施加强力循环甩飞力
-        if distance < 5 then
-            local throwForce = getDirectionVector(currentDirection) * SPIN_SPEED * 2
-            
-            local bodyVelocity = targetRoot:FindFirstChild("BodyVelocity") or Instance.new("BodyVelocity")
-            bodyVelocity.Velocity = throwForce
-            bodyVelocity.MaxForce = Vector3.new(200000, 200000, 200000)
-            bodyVelocity.P = 20000
-            bodyVelocity.Parent = targetRoot
-            
-            -- 添加强力旋转力
-            local bodyGyro = targetRoot:FindFirstChild("BodyGyro") or Instance.new("BodyGyro")
-            bodyGyro.MaxTorque = Vector3.new(200000, 200000, 200000)
-            bodyGyro.P = 20000
-            bodyGyro.D = 1000
-            bodyGyro.CFrame = CFrame.Angles(0, spinAngle * 2, 0)
-            bodyGyro.Parent = targetRoot
-            
-            -- 短暂延迟后移除力
-            task.spawn(function()
-                task.wait(0.2)
-                if bodyVelocity and bodyVelocity.Parent == targetRoot then
-                    bodyVelocity:Destroy()
-                end
-                if bodyGyro and bodyGyro.Parent == targetRoot then
-                    bodyGyro:Destroy()
-                end
-            end)
-        end
-    end)
-end
-
-local function stopSpinAttack()
-    spinningPlayer = false
-    if spinAttackConnection then
-        spinAttackConnection:Disconnect()
-        spinAttackConnection = nil
-    end
-    spinAttackBtn.Text = "循环甩飞选定玩家"
-    spinAttackBtn.BackgroundColor3 = Color3.fromRGB(200, 70, 70)
-    
-    -- 恢复正常姿态
-    if LP.Character then
-        local localRoot = LP.Character:FindFirstChild("HumanoidRootPart")
-        if localRoot then
-            localRoot.CFrame = CFrame.new(localRoot.Position) * CFrame.Angles(0, 0, 0)
-        end
-    end
-end
-
--- === 坐标记录功能 ===
-local function saveCurrentPosition()
-    if not LP.Character then
-        savePosBtn.Text = "无角色!"
-        task.wait(1)
-        savePosBtn.Text = "记录当前位置"
-        return
-    end
-
-    local root = LP.Character:FindFirstChild("HumanoidRootPart")
-    if not root then
-        savePosBtn.Text = "无Root部件!"
-        task.wait(1)
-        savePosBtn.Text = "记录当前位置"
-        return
-    end
-
-    savedPosition = root.CFrame
-    savePosBtn.Text = "位置已记录!"
-    task.wait(1)
-    savePosBtn.Text = "记录当前位置"
-end
-
-local function returnToSavedPosition()
-    if not savedPosition then
-        returnPosBtn.Text = "未记录位置!"
-        task.wait(1)
-        returnPosBtn.Text = "返回记录位置"
-        return
-    end
-
-    if not LP.Character then
-        returnPosBtn.Text = "无角色!"
-        task.wait(1)
-        returnPosBtn.Text = "返回记录位置"
-        return
-    end
-
-    local root = LP.Character:FindFirstChild("HumanoidRootPart")
-    if not root then
-        returnPosBtn.Text = "无Root部件!"
-        task.wait(1)
-        returnPosBtn.Text = "返回记录位置"
-        return
-    end
-
-    root.CFrame = savedPosition
-    returnPosBtn.Text = "已返回!"
-    task.wait(1)
-    returnPosBtn.Text = "返回记录位置"
-end
-
-local function updatePlayerList()
-    -- 清除现有玩家列表
-    for _, child in ipairs(playerListScroll:GetChildren()) do
-        if child:IsA("TextButton") then
-            child:Destroy()
-        end
-    end
-    
-    -- 添加玩家到列表
-    for _, player in ipairs(PS:GetPlayers()) do
-        if player ~= LP then
-            local playerBtn = Instance.new("TextButton")
-            playerBtn.Size = UDim2.new(1, -5, 0, 25)
-            playerBtn.Position = UDim2.new(0, 5, 0, 0)
-            playerBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-            playerBtn.BackgroundTransparency = 0.3
-            playerBtn.BorderSizePixel = 1
-            playerBtn.BorderColor3 = Color3.fromRGB(80, 80, 80)
-            playerBtn.Text = player.Name
-            playerBtn.TextColor3 = Color3.new(1, 1, 1)
-            playerBtn.TextSize = 12
-            playerBtn.Parent = playerListScroll
-            
-            playerBtn.MouseButton1Click:Connect(function()
-                selectedPlayer = player
-                playerDropdownText.Text = player.Name
-                playerListFrame.Visible = false
-                playerDropdownBtn.Text = "▼"
-            end)
-        end
-    end
-    
-    -- 更新玩家列表大小
-    playerListScroll.CanvasSize = UDim2.new(0, 0, 0, #playerListScroll:GetChildren() * 27)
-end
-
--- === 页面切换功能 ===
-local function switchPage(page)
-    if page == "main" then
-        mainScrollFrame.Visible = true
-        secondScrollFrame.Visible = false
-        nextPageBtn.Text = ">"
-        currentPage = "main"
-        -- 关闭选人界面
-        playerListFrame.Visible = false
-        playerDropdownBtn.Text = "▼"
-    elseif page == "second" then
-        mainScrollFrame.Visible = false
-        secondScrollFrame.Visible = true
-        nextPageBtn.Text = "<"
-        currentPage = "second"
-        updatePlayerList()
-    end
-end
-
--- === 按钮事件 ===
-trackBtn.MouseButton1Click:Connect(function()
-    ENABLED = not ENABLED
-    trackBtn.Text = "追踪: " .. (ENABLED and "开" or "关")
-    trackBtn.BackgroundColor3 = ENABLED and Color3.fromRGB(50, 180, 50) or Color3.fromRGB(220, 50, 50)
-    for _, d in ipairs(dots) do d.Visible = ENABLED end
-end)
-
-colorBtn.MouseButton1Click:Connect(function()
-    COLORFUL = not COLORFUL
-    colorBtn.Text = "彩色: " .. (COLORFUL and "开" or "关")
-    colorBtn.BackgroundColor3 = COLORFUL and Color3.fromRGB(50, 180, 50) or Color3.fromRGB(220, 50, 50)
-end)
-
-espBtn.MouseButton1Click:Connect(function()
-    toggleESP(not ESP_ENABLED)
-end)
-
-noclipBtn.MouseButton1Click:Connect(function()
-    toggleNoclip(not NOCLIP_ENABLED)
-end)
-
-nextPageBtn.MouseButton1Click:Connect(function()
-    if currentPage == "main" then
-        switchPage("second")
-    else
-        switchPage("main")
-    end
-end)
-
-teleportAllBtn.MouseButton1Click:Connect(function()
-    if teleportingAll then
-        stopTeleportingAll()
-    else
-        teleportToAllPlayersLoop()
-    end
-end)
-
-playerDropdownBtn.MouseButton1Click:Connect(function()
-    playerListFrame.Visible = not playerListFrame.Visible
-    if playerListFrame.Visible then
-        updatePlayerList()
-        playerDropdownBtn.Text = "▲"
-    else
-        playerDropdownBtn.Text = "▼"
-    end
-end)
-
-teleportSelectedBtn.MouseButton1Click:Connect(function()
-    if teleportingSelected then
-        stopTeleportingSelected()
-    else
-        if selectedPlayer then
-            teleportToSelectedPlayerLoop()
-        else
-            -- 如果没有选择玩家，显示提示
-            teleportSelectedBtn.Text = "请先选择玩家"
-            task.wait(1)
-            teleportSelectedBtn.Text = "循环传送选定玩家"
-        end
-    end
-end)
-
-spinAttackBtn.MouseButton1Click:Connect(function()
-    if spinningPlayer then
-        stopSpinAttack()
-    else
-        if selectedPlayer then
-            spinAttackPlayer()
-        else
-            -- 如果没有选择玩家，显示提示
-            spinAttackBtn.Text = "请先选择玩家"
-            task.wait(1)
-            spinAttackBtn.Text = "循环甩飞选定玩家"
-        end
-    end
-end)
-
--- 坐标记录按钮事件
-savePosBtn.MouseButton1Click:Connect(function()
-    saveCurrentPosition()
-end)
-
-returnPosBtn.MouseButton1Click:Connect(function()
-    returnToSavedPosition()
-end)
-
-closeBtn.MouseButton1Click:Connect(function()
-    -- 清理ESP
-    toggleESP(false)
-    -- 停止传送
-    stopTeleportingAll()
-    stopTeleportingSelected()
-    -- 停止甩飞
-    stopSpinAttack()
-    -- 关闭穿墙
-    toggleNoclip(false)
-    
-    for _, d in ipairs(dots) do d:Destroy() end
-    sg:Destroy()
-    setreadonly(meta, false)
-    meta.__namecall = old
-    setreadonly(meta, true)
-end)
-
--- 最小化按钮事件
-minimizeBtn.MouseButton1Click:Connect(function()
-    isMinimized = not isMinimized
-    if isMinimized then
-        contentFrame.Visible = false
-        fr.Size = UDim2.new(0, 220, 0, 25)
-        minimizeBtn.Text = "+"
-    else
-        contentFrame.Visible = true
-        fr.Size = UDim2.new(0, 220, 0, 300)
-        minimizeBtn.Text = "_"
-    end
-end)
-
--- ===== 飞行功能 =====
-local root = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
-if not root and LP.Character then
-    root = LP.Character:WaitForChild("HumanoidRootPart", 5)
-end
-
-local bodyV
-local flySpeed = 30
-local isFlying = false
-
--- 移动端控制变量
-local moveDirection = Vector3.new()
-local isMovingForward = false
-local isMovingBackward = false
-local isMovingUp = false
-local isMovingDown = false
-
--- 移动端按钮事件
-if UIS.TouchEnabled then
-    -- 前进按钮
-    forwardBtn.MouseButton1Down:Connect(function()
-        isMovingForward = true
-    end)
-    forwardBtn.MouseButton1Up:Connect(function()
-        isMovingForward = false
-    end)
-    
-    -- 后退按钮
-    backwardBtn.MouseButton1Down:Connect(function()
-        isMovingBackward = true
-    end)
-    backwardBtn.MouseButton1Up:Connect(function()
-        isMovingBackward = false
-    end)
-    
-    -- 上升按钮
-    upBtn.MouseButton1Down:Connect(function()
-        isMovingUp = true
-    end)
-    upBtn.MouseButton1Up:Connect(function()
-        isMovingUp = false
-    end)
-    
-    -- 下降按钮
-    downBtn.MouseButton1Down:Connect(function()
-        isMovingDown = true
-    end)
-    downBtn.MouseButton1Up:Connect(function()
-        isMovingDown = false
-    end)
-end
-
--- 飞行开关
-flyBtn.MouseButton1Click:Connect(function()
-    if not root or not root.Parent then
-        if LP.Character then
-            root = LP.Character:WaitForChild("HumanoidRootPart", 3)
-        end
-        if not root then
-            flyBtn.Text = "飞行: 无角色"
-            return
-        end
-    end
-    
-    isFlying = not isFlying
-    if isFlying then
-        -- 启用飞行
-        bodyV = Instance.new("BodyVelocity")
-        bodyV.MaxForce = Vector3.new(1e6, 1e6, 1e6)
-        bodyV.Velocity = Vector3.new()
-        bodyV.Parent = root
-        flyBtn.Text = "飞行: 开"
-        flyBtn.BackgroundColor3 = Color3.fromRGB(50, 180, 50)
-        -- 显示移动端控制按钮
-        if UIS.TouchEnabled then
-            forwardBtn.Visible = true
-            backwardBtn.Visible = true
-            upBtn.Visible = true
-            downBtn.Visible = true
-        end
-    else
-        -- 禁用飞行
-        if bodyV then
-            bodyV:Destroy()
-            bodyV = nil
-        end
-        flyBtn.Text = "飞行: 关"
-        flyBtn.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
-        -- 隐藏移动端控制按钮
-        if UIS.TouchEnabled then
-            forwardBtn.Visible = false
-            backwardBtn.Visible = false
-            upBtn.Visible = false
-            downBtn.Visible = false
-        end
-        -- 重置移动状态
-        isMovingForward = false
-        isMovingBackward = false
-        isMovingUp = false
-        isMovingDown = false
-    end
-end)
-
--- 速度按钮 (最大150)
-speedBtn.MouseButton1Click:Connect(function()
-    if not bodyV then return end
-    flySpeed = flySpeed + 10
-    if flySpeed > 150 then flySpeed = 10 end
-    speedBtn.Text = "速度 " .. flySpeed
-end)
-
--- 飞行控制函数
-RS.RenderStepped:Connect(function()
-    if not bodyV or not root or not root.Parent then return end
-    
-    local move = Vector3.new()
-    
-    -- 键盘控制 (PC端)
-    if UIS.KeyboardEnabled then
-        if UIS:IsKeyDown(Enum.KeyCode.W) then move = move + CAM.CFrame.LookVector end
-        if UIS:IsKeyDown(Enum.KeyCode.S) then move = move - CAM.CFrame.LookVector end
-        if UIS:IsKeyDown(Enum.KeyCode.A) then move = move - CAM.CFrame.RightVector end
-        if UIS:IsKeyDown(Enum.KeyCode.D) then move = move + CAM.CFrame.RightVector end
-        if UIS:IsKeyDown(Enum.KeyCode.Space) then move = move + Vector3.new(0, 1, 0) end
-        if UIS:IsKeyDown(Enum.KeyCode.LeftShift) then move = move - Vector3.new(0, 1, 0) end
-    end
-    
-    -- 移动端按钮控制
-    if UIS.TouchEnabled then
-        if isMovingForward then
-            move = move + CAM.CFrame.LookVector
-        end
-        if isMovingBackward then
-            move = move - CAM.CFrame.LookVector
-        end
-        if isMovingUp then
-            move = move + Vector3.new(0, 1, 0)
-        end
-        if isMovingDown then
-            move = move - Vector3.new(0, 1, 0)
-        end
-    end
-    
-    -- 应用移动
-    if move.Magnitude > 0 then
-        bodyV.Velocity = move.Unit * flySpeed
-    else
-        bodyV.Velocity = Vector3.new(0, 0, 0)
-    end
-end)
-
--- 重生时重新获取 root
-LP.CharacterAdded:Connect(function(newChar)
-    root = newChar:WaitForChild("HumanoidRootPart", 5)
-    if bodyV then 
-        bodyV:Destroy() 
-        bodyV = nil 
-    end
-    isFlying = false
-    flyBtn.Text = "飞行: 关"
-    flyBtn.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
     -- 隐藏移动端控制按钮
-    if UIS.TouchEnabled then
-        forwardBtn.Visible = false
-        backwardBtn.Visible = false
-        upBtn.Visible = false
-        downBtn.Visible = false
-    end
+    forwardBtn.Visible = false
+    backwardBtn.Visible = false
+    upBtn.Visible = false
+    downBtn.Visible = false
+    
     -- 重新启用穿墙如果之前是开启状态
     if NOCLIP_ENABLED then
         toggleNoclip(false) -- 先禁用
@@ -2277,12 +1200,4 @@ LP.CharacterAdded:Connect(function(newChar)
     end
 end)
 
--- 初始化玩家列表
-updatePlayerList()
--- 监听玩家加入和离开
-PS.PlayerAdded:Connect(updatePlayerList)
-PS.PlayerRemoving:Connect(updatePlayerList)
-
--- 确保UI正确显示
-task.wait(0.5)
-updateCircle()
+print("离瑜二UI - 全新脚本加载完成！")
