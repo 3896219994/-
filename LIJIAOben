@@ -26,18 +26,14 @@ ScreenGui.Parent = CoreGui
 local ENABLED = false
 local ESP_ENABLED = false
 local NOCLIP_ENABLED = false
+local BULLET_TRACKING_ENABLED = false
 local isFlying = false
 local flySpeed = 30
 local teleportingAll = false
 local teleportingSelected = false
-local spinningPlayer = false
 local selectedPlayers = {}
 local attackWhitelist = {}
 local savedPosition = nil
-
--- 子弹追踪相关变量
-local BULLET_TRACKING_ENABLED = false
-local bulletTrackingConnection = nil
 
 -- 空心圆相关
 local CAM = Workspace.CurrentCamera
@@ -72,7 +68,9 @@ task.spawn(function()
     while true do
         if ENABLED then
             local col = COLORS[colorIdx]
-            for _, d in ipairs(dots) do d.BackgroundColor3 = col end
+            for _, d in ipairs(dots) do 
+                d.BackgroundColor3 = col 
+            end
             colorIdx = colorIdx % #COLORS + 1
         end
         task.wait(0.5)
@@ -91,78 +89,90 @@ updateCircle()
 CAM:GetPropertyChangedSignal("ViewportSize"):Connect(updateCircle)
 RunService.RenderStepped:Connect(updateCircle)
 
--- === 射线拦截（子弹追踪核心） ===
-local meta = getrawmetatable(game)
-local old = meta.__namecall
-setreadonly(meta, false)
-
-meta.__namecall = newcclosure(function(self, ...)
-    local method = getnamecallmethod()
-    local args = {...}
+-- === 射线拦截（子弹追踪核心）===
+local function setupBulletTracking()
+    local success, meta = pcall(getrawmetatable, game)
+    if not success then return end
     
-    if (method == "Raycast" or method == "FindPartOnRay") and not checkcaller() and self == Workspace then
-        if not BULLET_TRACKING_ENABLED then return old(self, ...) end
+    local old = meta.__namecall
+    setreadonly(meta, false)
+    
+    meta.__namecall = newcclosure(function(self, ...)
+        local method = getnamecallmethod()
+        local args = {...}
         
-        local origin, direction
-        if method == "Raycast" then
-            origin, direction = args[1], args[2]
-        else
-            local ray = args[1]
-            if typeof(ray) == "Ray" then
-                origin, direction = ray.Origin, ray.Direction
-            end
-        end
-        
-        if origin and direction then
-            local closestHead
-            local closestDistance = math.huge
-            local cameraPos = CAM.CFrame.Position
-            local lookVec = CAM.CFrame.LookVector
+        if (method == "Raycast" or method == "FindPartOnRay") and self == Workspace then
+            if not BULLET_TRACKING_ENABLED then return old(self, ...) end
             
-            for _, plr in ipairs(Players:GetPlayers()) do
-                -- 检查白名单
-                if attackWhitelist[plr] then
-                    continue
+            local origin, direction
+            if method == "Raycast" then
+                origin, direction = args[1], args[2]
+            else
+                local ray = args[1]
+                if typeof(ray) == "Ray" then
+                    origin, direction = ray.Origin, ray.Direction
                 end
+            end
+            
+            if origin and direction then
+                local closestHead
+                local closestDistance = math.huge
+                local cameraPos = CAM.CFrame.Position
+                local lookVec = CAM.CFrame.LookVector
                 
-                if plr ~= LocalPlayer and plr.Character then
-                    local char = plr.Character
-                    local head = char:FindFirstChild("Head")
-                    local hum = char:FindFirstChildOfClass("Humanoid")
+                for _, plr in ipairs(Players:GetPlayers()) do
+                    -- 检查白名单
+                    if attackWhitelist[plr] then
+                        continue
+                    end
                     
-                    if head and hum and hum.Health > 0 and not char:FindFirstChild("ForceField") then
-                        local dir = (head.Position - cameraPos).Unit
-                        local angle = math.deg(math.acos(lookVec:Dot(dir)))
+                    if plr ~= LocalPlayer and plr.Character then
+                        local char = plr.Character
+                        local head = char:FindFirstChild("Head")
+                        local hum = char:FindFirstChildOfClass("Humanoid")
                         
-                        if angle <= RADIUS then
-                            local dist = (head.Position - cameraPos).Magnitude
-                            if dist < closestDistance then
-                                closestHead = head
-                                closestDistance = dist
+                        if head and hum and hum.Health > 0 and not char:FindFirstChild("ForceField") then
+                            local dir = (head.Position - cameraPos).Unit
+                            local angle = math.deg(math.acos(lookVec:Dot(dir)))
+                            
+                            if angle <= RADIUS then
+                                local dist = (head.Position - cameraPos).Magnitude
+                                if dist < closestDistance then
+                                    closestHead = head
+                                    closestDistance = dist
+                                end
                             end
                         end
                     end
                 end
-            end
-            
-            if closestHead then
-                return {
-                    Instance = closestHead,
-                    Position = closestHead.Position,
-                    Normal = (closestHead.Position - origin).Unit,
-                    Material = Enum.Material.Plastic
-                }
+                
+                if closestHead then
+                    return {
+                        Instance = closestHead,
+                        Position = closestHead.Position,
+                        Normal = (closestHead.Position - origin).Unit,
+                        Material = Enum.Material.Plastic
+                    }
+                end
             end
         end
+        return old(self, ...)
+    end)
+    
+    setreadonly(meta, true)
+    return function()
+        if meta and old then
+            setreadonly(meta, false)
+            meta.__namecall = old
+            setreadonly(meta, true)
+        end
     end
-    return old(self, ...)
-end)
+end
 
-setreadonly(meta, true)
+local cleanupMeta = setupBulletTracking()
 
 -- 透视功能
 local espObjects = {}
-local espConnections = {}
 
 local function createESP(character)
     if not character or not character:IsA("Model") or espObjects[character] then return end
@@ -179,11 +189,9 @@ local function createESP(character)
     
     espObjects[character] = highlight
     
-    local connection
-    connection = character.AncestryChanged:Connect(function(_, parent)
+    character.AncestryChanged:Connect(function(_, parent)
         if not parent then
             if highlight then highlight:Destroy() end
-            if connection then connection:Disconnect() end
             espObjects[character] = nil
         end
     end)
@@ -198,6 +206,15 @@ local function toggleESP(state)
                 createESP(player.Character)
             end
         end
+        
+        -- 监听新玩家
+        Players.PlayerAdded:Connect(function(player)
+            player.CharacterAdded:Connect(function(character)
+                if ESP_ENABLED then
+                    createESP(character)
+                end
+            end)
+        end)
     else
         for character, highlight in pairs(espObjects) do
             if highlight then highlight:Destroy() end
@@ -235,171 +252,199 @@ local function disableNoclip()
 end
 
 local function toggleNoclip(state)
-    if state then enableNoclip() else disableNoclip() end
-end
-
--- ===== 移动端飞行功能 =====
-local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-if not root and LocalPlayer.Character then
-    root = LocalPlayer.Character:WaitForChild("HumanoidRootPart", 5)
-end
-
-local bodyV
-local flySpeed = 30
-local isFlying = false
-
--- 移动端控制变量
-local isMovingForward = false
-local isMovingBackward = false
-local isMovingUp = false
-local isMovingDown = false
-
--- 创建移动端控制按钮
-local forwardBtn, backwardBtn, upBtn, downBtn
-
--- 前进按钮
-forwardBtn = Instance.new("TextButton")
-forwardBtn.Size = UDim2.new(0, 40, 0, 40)
-forwardBtn.Position = UDim2.new(0.5, -20, 0.9, -120)
-forwardBtn.BackgroundColor3 = Color3.fromRGB(70, 70, 200)
-forwardBtn.BackgroundTransparency = 0.5
-forwardBtn.BorderSizePixel = 0
-forwardBtn.Text = "前进"
-forwardBtn.TextColor3 = Color3.new(1, 1, 1)
-forwardBtn.TextSize = 12
-forwardBtn.Visible = false
-forwardBtn.ZIndex = 20
-forwardBtn.Parent = ScreenGui
-
--- 后退按钮
-backwardBtn = Instance.new("TextButton")
-backwardBtn.Size = UDim2.new(0, 40, 0, 40)
-backwardBtn.Position = UDim2.new(0.5, -20, 0.9, -70)
-backwardBtn.BackgroundColor3 = Color3.fromRGB(200, 70, 70)
-backwardBtn.BackgroundTransparency = 0.5
-backwardBtn.BorderSizePixel = 0
-backwardBtn.Text = "后退"
-backwardBtn.TextColor3 = Color3.new(1, 1, 1)
-backwardBtn.TextSize = 12
-backwardBtn.Visible = false
-backwardBtn.ZIndex = 20
-backwardBtn.Parent = ScreenGui
-
--- 上升按钮
-upBtn = Instance.new("TextButton")
-upBtn.Size = UDim2.new(0, 40, 0, 40)
-upBtn.Position = UDim2.new(0.8, -20, 0.9, -120)
-upBtn.BackgroundColor3 = Color3.fromRGB(70, 200, 70)
-upBtn.BackgroundTransparency = 0.5
-upBtn.BorderSizePixel = 0
-upBtn.Text = "上升"
-upBtn.TextColor3 = Color3.new(1, 1, 1)
-upBtn.TextSize = 12
-upBtn.Visible = false
-upBtn.ZIndex = 20
-upBtn.Parent = ScreenGui
-
--- 下降按钮
-downBtn = Instance.new("TextButton")
-downBtn.Size = UDim2.new(0, 40, 0, 40)
-downBtn.Position = UDim2.new(0.8, -20, 0.9, -70)
-downBtn.BackgroundColor3 = Color3.fromRGB(200, 200, 70)
-downBtn.BackgroundTransparency = 0.5
-downBtn.BorderSizePixel = 0
-downBtn.Text = "下降"
-downBtn.TextColor3 = Color3.new(1, 1, 1)
-downBtn.TextSize = 12
-downBtn.Visible = false
-downBtn.ZIndex = 20
-downBtn.Parent = ScreenGui
-
--- 移动端按钮事件
-forwardBtn.MouseButton1Down:Connect(function()
-    isMovingForward = true
-end)
-forwardBtn.MouseButton1Up:Connect(function()
-    isMovingForward = false
-end)
-
-backwardBtn.MouseButton1Down:Connect(function()
-    isMovingBackward = true
-end)
-backwardBtn.MouseButton1Up:Connect(function()
-    isMovingBackward = false
-end)
-
-upBtn.MouseButton1Down:Connect(function()
-    isMovingUp = true
-end)
-upBtn.MouseButton1Up:Connect(function()
-    isMovingUp = false
-end)
-
-downBtn.MouseButton1Down:Connect(function()
-    isMovingDown = true
-end)
-downBtn.MouseButton1Up:Connect(function()
-    isMovingDown = false
-end)
-
-local function toggleFly(state)
-    isFlying = state
-    
-    if isFlying then
-        if not root or not root.Parent then
-            if LocalPlayer.Character then
-                root = LocalPlayer.Character:WaitForChild("HumanoidRootPart", 3)
-            end
-            if not root then return end
-        end
-        
-        bodyV = Instance.new("BodyVelocity")
-        bodyV.MaxForce = Vector3.new(1e6, 1e6, 1e6)
-        bodyV.Velocity = Vector3.new()
-        bodyV.Parent = root
-        
-        -- 显示移动端控制按钮
-        forwardBtn.Visible = true
-        backwardBtn.Visible = true
-        upBtn.Visible = true
-        downBtn.Visible = true
-    else
-        if bodyV then
-            bodyV:Destroy()
-            bodyV = nil
-        end
-        
-        -- 隐藏移动端控制按钮
-        forwardBtn.Visible = false
-        backwardBtn.Visible = false
-        upBtn.Visible = false
-        downBtn.Visible = false
-        
-        -- 重置移动状态
-        isMovingForward = false
-        isMovingBackward = false
-        isMovingUp = false
-        isMovingDown = false
+    if state then 
+        enableNoclip() 
+    else 
+        disableNoclip() 
     end
 end
 
--- 飞行控制函数（只使用移动端控制）
-RunService.RenderStepped:Connect(function()
-    if not bodyV or not root or not root.Parent then return end
+-- ===== 移动端飞行系统 =====
+local moveButtons = {} -- 存储移动按钮
+local moveConnections = {} -- 存储移动按钮的事件连接
+local bodyV = nil
+local flySpeed = 30
+local isFlying = false
+
+-- 移动控制状态
+local moveState = {
+    forward = false,
+    backward = false,
+    up = false,
+    down = false
+}
+
+-- 创建移动控制按钮函数
+local function createMobileControls()
+    -- 前进按钮
+    local forwardBtn = Instance.new("TextButton")
+    forwardBtn.Name = "MobileForward"
+    forwardBtn.Size = UDim2.new(0, 50, 0, 50)
+    forwardBtn.Position = UDim2.new(0.5, -25, 0.9, -130)
+    forwardBtn.BackgroundColor3 = Color3.fromRGB(70, 70, 200)
+    forwardBtn.BackgroundTransparency = 0.5
+    forwardBtn.BorderSizePixel = 0
+    forwardBtn.Text = "前进"
+    forwardBtn.TextColor3 = Color3.new(1, 1, 1)
+    forwardBtn.TextSize = 14
+    forwardBtn.Visible = false
+    forwardBtn.ZIndex = 20
+    forwardBtn.Parent = ScreenGui
+    
+    local forwardCorner = Instance.new("UICorner")
+    forwardCorner.CornerRadius = UDim.new(0, 8)
+    forwardCorner.Parent = forwardBtn
+    
+    -- 后退按钮
+    local backwardBtn = Instance.new("TextButton")
+    backwardBtn.Name = "MobileBackward"
+    backwardBtn.Size = UDim2.new(0, 50, 0, 50)
+    backwardBtn.Position = UDim2.new(0.5, -25, 0.9, -70)
+    backwardBtn.BackgroundColor3 = Color3.fromRGB(200, 70, 70)
+    backwardBtn.BackgroundTransparency = 0.5
+    backwardBtn.BorderSizePixel = 0
+    backwardBtn.Text = "后退"
+    backwardBtn.TextColor3 = Color3.new(1, 1, 1)
+    backwardBtn.TextSize = 14
+    backwardBtn.Visible = false
+    backwardBtn.ZIndex = 20
+    backwardBtn.Parent = ScreenGui
+    
+    local backwardCorner = Instance.new("UICorner")
+    backwardCorner.CornerRadius = UDim.new(0, 8)
+    backwardCorner.Parent = backwardBtn
+    
+    -- 上升按钮
+    local upBtn = Instance.new("TextButton")
+    upBtn.Name = "MobileUp"
+    upBtn.Size = UDim2.new(0, 50, 0, 50)
+    upBtn.Position = UDim2.new(0.8, -25, 0.9, -130)
+    upBtn.BackgroundColor3 = Color3.fromRGB(70, 200, 70)
+    upBtn.BackgroundTransparency = 0.5
+    upBtn.BorderSizePixel = 0
+    upBtn.Text = "上升"
+    upBtn.TextColor3 = Color3.new(1, 1, 1)
+    upBtn.TextSize = 14
+    upBtn.Visible = false
+    upBtn.ZIndex = 20
+    upBtn.Parent = ScreenGui
+    
+    local upCorner = Instance.new("UICorner")
+    upCorner.CornerRadius = UDim.new(0, 8)
+    upCorner.Parent = upBtn
+    
+    -- 下降按钮
+    local downBtn = Instance.new("TextButton")
+    downBtn.Name = "MobileDown"
+    downBtn.Size = UDim2.new(0, 50, 0, 50)
+    downBtn.Position = UDim2.new(0.8, -25, 0.9, -70)
+    downBtn.BackgroundColor3 = Color3.fromRGB(200, 200, 70)
+    downBtn.BackgroundTransparency = 0.5
+    downBtn.BorderSizePixel = 0
+    downBtn.Text = "下降"
+    downBtn.TextColor3 = Color3.new(1, 1, 1)
+    downBtn.TextSize = 14
+    downBtn.Visible = false
+    downBtn.ZIndex = 20
+    downBtn.Parent = ScreenGui
+    
+    local downCorner = Instance.new("UICorner")
+    downCorner.CornerRadius = UDim.new(0, 8)
+    downCorner.Parent = downBtn
+    
+    -- 存储按钮
+    moveButtons = {
+        forward = forwardBtn,
+        backward = backwardBtn,
+        up = upBtn,
+        down = downBtn
+    }
+    
+    -- 设置按钮事件
+    local function setupButtonEvents()
+        -- 清理旧连接
+        for _, conn in pairs(moveConnections) do
+            conn:Disconnect()
+        end
+        moveConnections = {}
+        
+        -- 前进按钮
+        table.insert(moveConnections, forwardBtn.MouseButton1Down:Connect(function()
+            moveState.forward = true
+        end))
+        
+        table.insert(moveConnections, forwardBtn.MouseButton1Up:Connect(function()
+            moveState.forward = false
+        end))
+        
+        table.insert(moveConnections, forwardBtn.MouseButton2Down:Connect(function()
+            moveState.forward = false
+        end))
+        
+        -- 后退按钮
+        table.insert(moveConnections, backwardBtn.MouseButton1Down:Connect(function()
+            moveState.backward = true
+        end))
+        
+        table.insert(moveConnections, backwardBtn.MouseButton1Up:Connect(function()
+            moveState.backward = false
+        end))
+        
+        table.insert(moveConnections, backwardBtn.MouseButton2Down:Connect(function()
+            moveState.backward = false
+        end))
+        
+        -- 上升按钮
+        table.insert(moveConnections, upBtn.MouseButton1Down:Connect(function()
+            moveState.up = true
+        end))
+        
+        table.insert(moveConnections, upBtn.MouseButton1Up:Connect(function()
+            moveState.up = false
+        end))
+        
+        table.insert(moveConnections, upBtn.MouseButton2Down:Connect(function()
+            moveState.up = false
+        end))
+        
+        -- 下降按钮
+        table.insert(moveConnections, downBtn.MouseButton1Down:Connect(function()
+            moveState.down = true
+        end))
+        
+        table.insert(moveConnections, downBtn.MouseButton1Up:Connect(function()
+            moveState.down = false
+        end))
+        
+        table.insert(moveConnections, downBtn.MouseButton2Down:Connect(function()
+            moveState.down = false
+        end))
+    end
+    
+    setupButtonEvents()
+    return moveButtons
+end
+
+-- 飞行控制
+local function updateFlight()
+    if not isFlying or not bodyV then return end
+    
+    local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not root then return end
     
     local move = Vector3.new()
     
     -- 移动端按钮控制
-    if isMovingForward then
+    if moveState.forward then
         move = move + CAM.CFrame.LookVector
     end
-    if isMovingBackward then
+    if moveState.backward then
         move = move - CAM.CFrame.LookVector
     end
-    if isMovingUp then
+    if moveState.up then
         move = move + Vector3.new(0, 1, 0)
     end
-    if isMovingDown then
+    if moveState.down then
         move = move - Vector3.new(0, 1, 0)
     end
     
@@ -409,7 +454,63 @@ RunService.RenderStepped:Connect(function()
     else
         bodyV.Velocity = Vector3.new(0, 0, 0)
     end
-end)
+end
+
+-- 飞行主函数
+local function toggleFly(state)
+    if state == isFlying then return end
+    
+    isFlying = state
+    
+    if isFlying then
+        local char = LocalPlayer.Character
+        if not char then return end
+        
+        local root = char:FindFirstChild("HumanoidRootPart")
+        if not root then
+            char:WaitForChild("HumanoidRootPart", 2)
+            root = char:FindFirstChild("HumanoidRootPart")
+            if not root then return end
+        end
+        
+        -- 创建飞行物理
+        bodyV = Instance.new("BodyVelocity")
+        bodyV.Name = "FlightBodyVelocity"
+        bodyV.MaxForce = Vector3.new(1e6, 1e6, 1e6)
+        bodyV.Velocity = Vector3.new()
+        bodyV.Parent = root
+        
+        -- 创建移动控制按钮（如果不存在）
+        if not moveButtons.forward then
+            createMobileControls()
+        end
+        
+        -- 显示移动控制按钮
+        for _, btn in pairs(moveButtons) do
+            if btn then btn.Visible = true end
+        end
+        
+        -- 开始飞行更新
+        RunService.RenderStepped:Connect(updateFlight)
+        
+    else
+        -- 清理飞行物理
+        if bodyV then
+            bodyV:Destroy()
+            bodyV = nil
+        end
+        
+        -- 隐藏移动控制按钮
+        for _, btn in pairs(moveButtons) do
+            if btn then btn.Visible = false end
+        end
+        
+        -- 重置移动状态
+        for key in pairs(moveState) do
+            moveState[key] = false
+        end
+    end
+end
 
 -- 传送功能
 local function teleportToPlayer(player)
@@ -467,7 +568,9 @@ local hue = 0
 local activeStrokes = {}
 
 local function AddActiveStroke(stroke)
-    if stroke and stroke.Parent then activeStrokes[stroke] = true end
+    if stroke and stroke.Parent then 
+        activeStrokes[stroke] = true 
+    end
 end
 
 RunService.Heartbeat:Connect(function(deltaTime)
@@ -475,7 +578,9 @@ RunService.Heartbeat:Connect(function(deltaTime)
     local color = Color3.fromHSV(hue / 360, 0.9, 1)
     
     for stroke in pairs(activeStrokes) do
-        if stroke and stroke.Parent then stroke.Color = color end
+        if stroke and stroke.Parent then 
+            stroke.Color = color 
+        end
     end
 end)
 
@@ -692,13 +797,26 @@ local function CreateSidebarButton(text, pageName)
     corner.CornerRadius = UDim.new(0, 6)
     corner.Parent = button
     
-    button.MouseEnter:Connect(function() button.BackgroundColor3 = Color3.fromRGB(60, 60, 60) end)
-    button.MouseLeave:Connect(function() button.BackgroundColor3 = Color3.fromRGB(50, 50, 50) end)
-    button.MouseButton1Down:Connect(function() button.BackgroundColor3 = Color3.fromRGB(70, 70, 70) end)
-    button.MouseButton1Up:Connect(function() button.BackgroundColor3 = Color3.fromRGB(60, 60, 60) end)
+    button.MouseEnter:Connect(function() 
+        button.BackgroundColor3 = Color3.fromRGB(60, 60, 60) 
+    end)
+    
+    button.MouseLeave:Connect(function() 
+        button.BackgroundColor3 = Color3.fromRGB(50, 50, 50) 
+    end)
+    
+    button.MouseButton1Down:Connect(function() 
+        button.BackgroundColor3 = Color3.fromRGB(70, 70, 70) 
+    end)
+    
+    button.MouseButton1Up:Connect(function() 
+        button.BackgroundColor3 = Color3.fromRGB(60, 60, 60) 
+    end)
     
     button.MouseButton1Click:Connect(function()
-        for _, page in pairs(Pages) do page.Visible = false end
+        for _, page in pairs(Pages) do 
+            page.Visible = false 
+        end
         Pages[pageName].Visible = true
     end)
     
@@ -757,16 +875,29 @@ local function CreateFunctionButton(text, parent, toggleCallback)
         toggleButton.BackgroundColor3 = isEnabled and Color3.fromRGB(100, 100, 100) or Color3.fromRGB(80, 80, 80)
     end
     
-    button.MouseEnter:Connect(function() if not isEnabled then button.BackgroundColor3 = Color3.fromRGB(60, 60, 60) end end)
+    button.MouseEnter:Connect(function() 
+        if not isEnabled then 
+            button.BackgroundColor3 = Color3.fromRGB(60, 60, 60) 
+        end 
+    end)
+    
     button.MouseLeave:Connect(UpdateButtonColors)
-    button.MouseButton1Down:Connect(function() if not isEnabled then button.BackgroundColor3 = Color3.fromRGB(70, 70, 70) end end)
+    
+    button.MouseButton1Down:Connect(function() 
+        if not isEnabled then 
+            button.BackgroundColor3 = Color3.fromRGB(70, 70, 70) 
+        end 
+    end)
+    
     button.MouseButton1Up:Connect(UpdateButtonColors)
     
     toggleButton.MouseButton1Click:Connect(function()
         isEnabled = not isEnabled
         toggleButton.Text = isEnabled and "开" or "关"
         UpdateButtonColors()
-        if toggleCallback then toggleCallback(isEnabled) end
+        if toggleCallback then 
+            toggleCallback(isEnabled) 
+        end
     end)
     
     button.Parent = buttonFrame
@@ -827,7 +958,9 @@ local function CreateDropdown(text, parent, selectionCallback)
 
     local function updatePlayerList(selectedList)
         for _, child in pairs(playerScroll:GetChildren()) do
-            if child:IsA("TextButton") then child:Destroy() end
+            if child:IsA("TextButton") then 
+                child:Destroy() 
+            end
         end
         
         for _, player in pairs(Players:GetPlayers()) do
@@ -850,7 +983,10 @@ local function CreateDropdown(text, parent, selectionCallback)
                         
                         -- 更新下拉框显示
                         local selectedCount = 0
-                        for _ in pairs(selectedList) do selectedCount = selectedCount + 1 end
+                        for _ in pairs(selectedList) do 
+                            selectedCount = selectedCount + 1 
+                        end
+                        
                         if selectedCount > 0 then
                             dropdownButton.Text = "已选择 " .. selectedCount .. " 名玩家"
                         else
@@ -899,7 +1035,9 @@ end)
 local trackButton, trackToggle = CreateFunctionButton("子弹追踪", Pages.General, function(enabled)
     BULLET_TRACKING_ENABLED = enabled
     ENABLED = enabled
-    for _, d in ipairs(dots) do d.Visible = enabled end
+    for _, d in ipairs(dots) do 
+        d.Visible = enabled 
+    end
 end)
 
 local espButton, espToggle = CreateFunctionButton("透视", Pages.General, function(enabled)
@@ -938,9 +1076,11 @@ speedCorner.CornerRadius = UDim.new(0, 6)
 speedCorner.Parent = speedButton
 
 speedButton.MouseButton1Click:Connect(function()
-    if bodyV then
+    if isFlying then
         flySpeed = flySpeed + 10
-        if flySpeed > 150 then flySpeed = 10 end
+        if flySpeed > 150 then 
+            flySpeed = 10 
+        end
         speedButton.Text = "  速度 " .. flySpeed
     end
 end)
@@ -1159,13 +1299,18 @@ CloseButton.MouseButton1Click:Connect(function()
             teleportingAll = false
             teleportingSelected = false
             
-            for _, d in ipairs(dots) do d:Destroy() end
-            ScreenGui:Destroy()
+            for _, d in ipairs(dots) do 
+                d:Destroy() 
+            end
+            
+            if ScreenGui then
+                ScreenGui:Destroy()
+            end
             
             -- 恢复元表
-            setreadonly(meta, false)
-            meta.__namecall = old
-            setreadonly(meta, true)
+            if cleanupMeta then
+                cleanupMeta()
+            end
         end
     end)
 end)
@@ -1178,26 +1323,24 @@ AddActiveStroke(MainFrameStroke)
 
 -- 重生时重新获取root
 LocalPlayer.CharacterAdded:Connect(function(newChar)
-    root = newChar:WaitForChild("HumanoidRootPart", 5)
-    if bodyV then 
-        bodyV:Destroy() 
-        bodyV = nil 
-    end
-    isFlying = false
-    if flyToggle then flyToggle.Text = "关" end
-    
-    -- 隐藏移动端控制按钮
-    forwardBtn.Visible = false
-    backwardBtn.Visible = false
-    upBtn.Visible = false
-    downBtn.Visible = false
+    task.wait(0.5) -- 等待角色完全加载
     
     -- 重新启用穿墙如果之前是开启状态
     if NOCLIP_ENABLED then
         toggleNoclip(false) -- 先禁用
-        task.wait(0.5) -- 等待角色完全加载
+        task.wait(0.2)
         toggleNoclip(true) -- 重新启用
     end
+    
+    -- 如果飞行开启，重新初始化飞行
+    if isFlying then
+        toggleFly(false) -- 先关闭
+        task.wait(0.3)
+        toggleFly(true) -- 重新开启
+    end
 end)
+
+-- 预创建移动控制按钮（但不显示）
+createMobileControls()
 
 print("离瑜二UI - 全新脚本加载完成！")
